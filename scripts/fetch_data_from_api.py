@@ -9,7 +9,7 @@ from pathlib import Path
 
 def fetch_and_store_population_data():
     # Setup logging
-    log_dir = Path('logs')
+    log_dir = Path('../logs')
     log_dir.mkdir(exist_ok=True)
     
     logging.basicConfig(
