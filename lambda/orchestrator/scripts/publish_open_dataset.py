@@ -1,6 +1,5 @@
 from typing import Dict
 import requests
-from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import boto3
 import os
@@ -93,26 +92,13 @@ def compare_files(website_files: Dict, s3_files: Dict) -> tuple:
 
 
 def main():
-    # Load environment variables
-    load_dotenv()
-    
-    # Get credentials from .env file
-    aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
-    aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-    aws_region = os.getenv('AWS_REGION')
-    bucket_name = os.getenv('S3_BUCKET_NAME')
-    
-    # Check if all required environment variables are set
-    if not all([aws_access_key, aws_secret_key, aws_region, bucket_name]):
-        raise EnvironmentError("Missing required environment variables")
-    
+
+    # define s3 bucket
+    bucket_name ='rearc-part1'
+
+
     # Create S3 client
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=aws_access_key,
-        aws_secret_access_key=aws_secret_key,
-        region_name=aws_region
-    )
+    s3_client = boto3.client('s3')
     
     try:
         # Create sessions and clients
@@ -202,10 +188,6 @@ def main():
         
     except Exception as e:
         logger.log(f"An error occurred: {str(e)}")
-    
-    finally:
-        # Save logs to S3
-        logger.save_logs()
 
 if __name__ == "__main__":
     main()

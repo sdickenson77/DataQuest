@@ -2,9 +2,6 @@ import boto3
 import requests
 import json
 from datetime import datetime
-import os
-from dotenv import load_dotenv
-from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,25 +17,11 @@ def fetch_and_store_population_data():
 
 
     try:
-        # Load environment variables
-        load_dotenv()
-        
-        # Get AWS credentials
-        aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
-        aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-        aws_region = os.getenv('AWS_REGION')
-        bucket_name = os.getenv('S3_BUCKET_NAME')
-        
-        if not all([aws_access_key, aws_secret_key, aws_region, bucket_name]):
-            raise EnvironmentError("Missing required AWS credentials")
-        
+
+        bucket_name = 'rearc-part1'
+
         # Initialize S3 client
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-            region_name=aws_region
-        )
+        s3_client = boto3.client('s3')
         
         # API endpoint
         url = "https://honolulu-api.datausa.io/tesseract/data.jsonrecords?cube=acs_yg_total_population_1&drilldowns=Year%2CNation&locale=en&measures=Population"
