@@ -4,10 +4,19 @@ import json
 from datetime import datetime
 import os
 from dotenv import load_dotenv
-import logging
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
+    handler = logging.StreamHandler()  # stdout -> CloudWatch Logs
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 def fetch_and_store_population_data():
+    logger.info("Starting fetch...")
     # Setup logging
     log_dir = Path('../../../logs')
     log_dir.mkdir(exist_ok=True)
@@ -18,9 +27,7 @@ def fetch_and_store_population_data():
         format='[%(asctime)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
-    logger = logging.getLogger(__name__)
-    
+
     try:
         # Load environment variables
         load_dotenv()
@@ -95,6 +102,7 @@ def fetch_and_store_population_data():
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         raise
+    logger.info("Done.")
 
 if __name__ == "__main__":
     fetch_and_store_population_data()

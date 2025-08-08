@@ -1,15 +1,21 @@
-import io
-from datetime import datetime
-import pytz
 from typing import Dict
-
 import requests
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import boto3
 import os
 from urllib.parse import urljoin
+import logging
 
+# Configure CloudWatch-compatible logging (stdout/stderr)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Avoid duplicate handlers on Lambda warm starts
+if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
+    logger.addHandler(_handler)
 
 def get_website_files(url: str, session: requests.Session) -> Dict:
     try:
@@ -84,47 +90,6 @@ def compare_files(website_files: Dict, s3_files: Dict) -> tuple:
     return new_files, deleted_files, modified_files
 
 
-class S3Logger:
-    def __init__(self, s3_client, bucket_name, prefix='logs'):
-        self.s3_client = s3_client
-        self.bucket_name = bucket_name
-        self.prefix = prefix
-        self.log_buffer = io.StringIO()
-        self.start_time = datetime.now(pytz.UTC)
-        
-        # Write header to log
-        self.log(f"Log started at {self.start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}\n")
-    
-    def log(self, message, print_to_console=True):
-        timestamp = datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S %Z')
-        log_message = f"[{timestamp}] {message}\n"
-        
-        # Write to buffer
-        self.log_buffer.write(log_message)
-        
-        # Also print to console if requested
-        if print_to_console:
-            print(message)
-    
-    def save_logs(self):
-        try:
-            # Generate log filename with timestamp
-            log_filename = f"{self.prefix}/sync_log_{self.start_time.strftime('%Y%m%d_%H%M%S')}.txt"
-            
-            # Upload log file to S3
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=log_filename,
-                Body=self.log_buffer.getvalue()
-            )
-            
-            print(f"\nLog file uploaded to s3://{self.bucket_name}/{log_filename}")
-            
-        except Exception as e:
-            print(f"Error saving log file to S3: {str(e)}")
-        finally:
-            # Close the buffer
-            self.log_buffer.close()
 
 
 def main():
@@ -148,9 +113,6 @@ def main():
         aws_secret_access_key=aws_secret_key,
         region_name=aws_region
     )
-    
-    # Initialize logger
-    logger = S3Logger(s3_client, bucket_name)
     
     try:
         # Create sessions and clients
