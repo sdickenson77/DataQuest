@@ -17,16 +17,7 @@ if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
 
 def fetch_and_store_population_data():
     logger.info("Starting fetch...")
-    # Setup logging
-    log_dir = Path('../../../logs')
-    log_dir.mkdir(exist_ok=True)
-    
-    logging.basicConfig(
-        filename=log_dir / f'api_fetch_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log',
-        level=logging.INFO,
-        format='[%(asctime)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+
 
     try:
         # Load environment variables
