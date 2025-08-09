@@ -109,26 +109,26 @@ def main():
         
         base_url = 'https://download.bls.gov/pub/time.series/pr/'
         
-        logger.log("Fetching files from website...")
+        logger.info("Fetching files from website...")
         website_files = get_website_files(base_url, session)
         
-        logger.log("Fetching files from S3 bucket...")
+        logger.info("Fetching files from S3 bucket...")
         s3_files = get_s3_files(s3_client, bucket_name)
         
         if not website_files or not s3_files:
-            logger.log("Error: Could not fetch files from either website or S3")
+            logger.error("Error: Could not fetch files from either website or S3")
             return
         
         new_files, deleted_files, modified_files = compare_files(website_files, s3_files)
         
         # Log new files
         if new_files:
-            logger.log("\nNew files on website (not in S3):")
+            logger.info("\nNew files on website (not in S3):")
             for filename in new_files:
-                logger.log(f"+ {filename}")
-                logger.log(f"  URL: {website_files[filename]['url']}")
-                logger.log(f"  Size: {website_files[filename]['size']} bytes")
-                logger.log(f"  Last Modified: {website_files[filename]['last_modified']}")
+                logger.info(f"+ {filename}")
+                logger.info(f"  URL: {website_files[filename]['url']}")
+                logger.info(f"  Size: {website_files[filename]['size']} bytes")
+                logger.info(f"  Last Modified: {website_files[filename]['last_modified']}")
                 
                 try:
                     file_response = session.get(website_files[filename]['url'])
@@ -138,38 +138,38 @@ def main():
                         Key=f'bls_data/{filename}',
                         Body=file_response.content
                     )
-                    logger.log(f"Successfully uploaded {filename}")
+                    logger.info(f"Successfully uploaded {filename}")
                 except Exception as e:
-                    logger.log(f"Error uploading {filename}: {str(e)}")
+                    logger.exception(f"Error uploading {filename}: {str(e)}")
         
         # Log and handle deleted files
         if deleted_files:
-            logger.log("\nFiles in S3 but no longer on website:")
+            logger.info("\nFiles in S3 but no longer on website:")
             for filename in deleted_files:
-                logger.log(f"- {filename}")
-                logger.log(f"  S3 Key: {s3_files[filename]['key']}")
-                logger.log(f"  Size: {s3_files[filename]['size']} bytes")
-                logger.log(f"  Last Modified: {s3_files[filename]['last_modified']}")
+                logger.info(f"- {filename}")
+                logger.info(f"  S3 Key: {s3_files[filename]['key']}")
+                logger.info(f"  Size: {s3_files[filename]['size']} bytes")
+                logger.info(f"  Last Modified: {s3_files[filename]['last_modified']}")
                 
                 try:
                     s3_client.delete_object(
                         Bucket=bucket_name,
                         Key=s3_files[filename]['key']
                     )
-                    logger.log(f"Successfully deleted {filename} from S3")
+                    logger.info(f"Successfully deleted {filename} from S3")
                 except Exception as e:
-                    logger.log(f"Error deleting {filename}: {str(e)}")
+                    logger.exception(f"Error deleting {filename}: {str(e)}")
         
         # Log modified files
         if modified_files:
-            logger.log("\nModified files (different sizes):")
+            logger.info("\nModified files (different sizes):")
             for filename in modified_files:
-                logger.log(f"~ {filename}")
-                logger.log(f"  URL: {website_files[filename]['url']}")
-                logger.log(f"  Website size: {website_files[filename]['size']} bytes")
-                logger.log(f"  S3 size: {s3_files[filename]['size']} bytes")
-                logger.log(f"  Website last modified: {website_files[filename]['last_modified']}")
-                logger.log(f"  S3 last modified: {s3_files[filename]['last_modified']}")
+                logger.info(f"~ {filename}")
+                logger.info(f"  URL: {website_files[filename]['url']}")
+                logger.info(f"  Website size: {website_files[filename]['size']} bytes")
+                logger.info(f"  S3 size: {s3_files[filename]['size']} bytes")
+                logger.info(f"  Website last modified: {website_files[filename]['last_modified']}")
+                logger.info(f"  S3 last modified: {s3_files[filename]['last_modified']}")
                 
                 try:
                     file_response = session.get(website_files[filename]['url'])
@@ -179,15 +179,16 @@ def main():
                         Key=f'bls_data/{filename}',
                         Body=file_response.content
                     )
-                    logger.log(f"Successfully updated {filename}")
+                    logger.info(f"Successfully updated {filename}")
                 except Exception as e:
-                    logger.log(f"Error updating {filename}: {str(e)}")
+                    logger.error(f"Error updating {filename}: {str(e)}")
         
         if not (new_files or deleted_files or modified_files):
-            logger.log("\nAll files are in sync between website and S3 bucket.")
+            logger.info("\nAll files are in sync between website and S3 bucket.")
         
     except Exception as e:
-        logger.log(f"An error occurred: {str(e)}")
+        logger.exception(f"An error occurred: {str(e)}")
+
 
 if __name__ == "__main__":
     main()
