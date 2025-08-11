@@ -10,7 +10,7 @@ export class DataPipelineStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const dataBucket = s3.Bucket.fromBucketName(this, 'DataBucket', 'rearc-part1');
+    const dataBucket = s3.Bucket.fromBucketName(this, 'DataBucket', process.env.S3_BUCKET_NAME as string);
 
     const orchestratorLogGroup = new logs.LogGroup(this, 'PipelineOrchestratorLogGroup', {
       retention: logs.RetentionDays.ONE_MONTH,
@@ -31,6 +31,7 @@ export class DataPipelineStack extends Stack {
             [
               // install needed requirements
               'python -m pip install --no-cache-dir -r requirements.txt -t /asset-output',
+              'python -m ipykernel install --prefix /asset-output --name python3 --display-name "Python 3"',
               'cp -r . /asset-output'
             ].join(' && ')
           ]

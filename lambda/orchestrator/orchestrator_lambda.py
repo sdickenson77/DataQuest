@@ -8,16 +8,14 @@ from pathlib import Path
 
 import boto3
 import papermill as pm
+import nbformat
 
 # import the scripts
-from scripts.fetch_data_from_api import fetch_and_store_population_data
 from scripts.publish_open_dataset import main as publish_main
+from scripts.fetch_data_from_api import fetch_and_store_population_data
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
-# set up aws clients
-sqs = boto3.client("sqs")
+logger = logging.getLogger(__name__)
 s3 = boto3.client("s3")
 
 
@@ -27,6 +25,7 @@ def send_sqs_notification(queue_url: str, payload: dict) -> None:
         logger.warning("SQS_QUEUE_URL not set; skipping SQS notification.")
         return
 
+    sqs = boto3.client("sqs")
     sqs.send_message(
         QueueUrl=queue_url,
         MessageBody=json.dumps(payload),
@@ -41,51 +40,48 @@ def send_sqs_notification(queue_url: str, payload: dict) -> None:
 def _execute_notebook_from_s3(
     notebook_bucket: str,
     notebook_key: str,
-    output_bucket: str | None,
-    output_prefix: str | None,
+    output_bucket: str | None = None,
+    output_prefix: str | None = None,
     parameters: dict | None = None,
 ) -> dict:
     """
-    Download a notebook from S3, execute with papermill, and upload executed notebook back to S3.
-    Returns metadata about the execution and output location.
+    Download the source notebook from S3, execute it with Papermill, and:
+      - If output_bucket is None: only log cell outputs to CloudWatch (no upload).
+      - Otherwise: upload executed notebook to the specified S3 location.
+    Returns execution metadata.
     """
-    if not notebook_bucket or not notebook_key:
-        raise ValueError("Notebook S3 location is required (NOTEBOOK_S3_BUCKET, NOTEBOOK_S3_KEY).")
+    # 1) Download input notebook to /tmp
+    with tempfile.TemporaryDirectory() as td:
+        in_path = os.path.join(td, "input.ipynb")
+        s3.download_file(notebook_bucket, notebook_key, in_path)
 
-    output_bucket = output_bucket or notebook_bucket
-    output_prefix = (output_prefix or "executed_notebooks/").strip("/")
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    base_name = Path(notebook_key).name
-    name_wo_ext = base_name[:-6] if base_name.endswith(".ipynb") else base_name
-    output_key = f"{output_prefix}/{name_wo_ext}__executed__{ts}.ipynb"
-
-    # Local temp files
-    with tempfile.TemporaryDirectory() as tmpdir:
-        local_in = os.path.join(tmpdir, "in.ipynb")
-        local_out = os.path.join(tmpdir, "out.ipynb")
-
-        logger.info("Downloading notebook s3://%s/%s to %s", notebook_bucket, notebook_key, local_in)
-        s3.download_file(notebook_bucket, notebook_key, local_in)
-
-        pm_params = parameters or {}
-        logger.info("Executing notebook with parameters: %s", pm_params)
-
-        # Execute the notebook
+        # 2) Execute with log_output=True so outputs go to Lambda logs (CloudWatch)
+        out_path = os.path.join(
+            td, f"executed_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.ipynb"
+        )
+        logger.info("Executing notebook %s/%s with parameters=%s", notebook_bucket, notebook_key, parameters or {})
         pm.execute_notebook(
-            input_path=local_in,
-            output_path=local_out,
-            parameters=pm_params,
-            progress_bar=False,
-            log_output=True,
+            input_path=in_path,
+            output_path=out_path,      # write locally only
+            parameters=parameters or {},
+            log_output=True,           # key: stream cell outputs to logs
+            kernel_name=None,          # let Papermill choose default
         )
 
-        logger.info("Uploading executed notebook to s3://%s/%s", output_bucket, output_key)
-        s3.upload_file(local_out, output_bucket, output_key)
+        # 3) Optionally upload the executed notebook
+        uploaded_uri = None
+        if output_bucket:
+            key = f"{(output_prefix or '').rstrip('/')}/" + os.path.basename(out_path) if output_prefix else os.path.basename(out_path)
+            s3.upload_file(out_path, output_bucket, key)
+            uploaded_uri = f"s3://{output_bucket}/{key}"
+            logger.info("Executed notebook uploaded to %s", uploaded_uri)
+        else:
+            logger.info("Notebook outputs logged to CloudWatch only; no S3 upload performed.")
 
     return {
-        "outputNotebookBucket": output_bucket,
-        "outputNotebookKey": output_key,
-        "outputNotebookUri": f"s3://{output_bucket}/{output_key}",
+        "outputUploaded": bool(uploaded_uri),
+        "outputS3Uri": uploaded_uri,
+        "cloudwatchLogging": True,
         "executedAt": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -103,15 +99,20 @@ def _is_s3_put_event(event: dict) -> bool:
 def _handle_s3_event(event: dict, context) -> dict:
     """
     Process S3 ObjectCreated events for JSON files under population_data/.
-    For each matching object, execute the configured notebook, passing the JSON S3 URI as a parameter.
+    For each matching object, execute the configured notebook and log outputs to CloudWatch.
     """
     processed = []
     skipped = []
 
-    nb_bucket = os.environ.get("NOTEBOOK_S3_BUCKET", "")
-    nb_key = os.environ.get("NOTEBOOK_S3_KEY", "")
-    out_bucket = os.environ.get("NOTEBOOK_OUTPUT_BUCKET", "") or None
-    out_prefix = os.environ.get("NOTEBOOK_OUTPUT_PREFIX", "") or None
+    nb_bucket = os.environ["NOTEBOOK_S3_BUCKET"]
+    nb_key = os.environ["NOTEBOOK_S3_KEY"]
+
+    #for jupyter
+    os.environ.setdefault("JUPYTER_PATH", "/var/task/share/jupyter")
+
+    # Force log-only mode (no S3 output)
+    out_bucket = None
+    out_prefix = None
 
     for rec in event.get("Records", []):
         if rec.get("eventSource") != "aws:s3":
@@ -130,8 +131,8 @@ def _handle_s3_event(event: dict, context) -> dict:
         exec_meta = _execute_notebook_from_s3(
             notebook_bucket=nb_bucket,
             notebook_key=nb_key,
-            output_bucket=out_bucket,
-            output_prefix=out_prefix,
+            output_bucket=out_bucket,     # None => log-only
+            output_prefix=out_prefix,     # None => log-only
             parameters={
                 "input_json_s3_uri": json_uri,
                 "trigger_bucket": bkt,
@@ -141,7 +142,7 @@ def _handle_s3_event(event: dict, context) -> dict:
         )
         processed.append({"inputJsonUri": json_uri, **exec_meta})
 
-    # Notify via SQS (optional)
+    # Notify via SQS (optional; unchanged)
     queue_url = os.environ.get("SQS_QUEUE_URL", "")
     message = {
         "event": "notebook_executed",
@@ -177,6 +178,7 @@ def lambda_handler(event, context):
         "fetch": fetch_result,
         "publish": publish_result,
     }
+
 
     try:
         send_sqs_notification(queue_url, message)
