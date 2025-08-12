@@ -19,11 +19,15 @@ To Deploy code:
 - CDK_DEFAULT_REGION='<YOUR REGION>
 - NOTEBOOK_S3_BUCKET=<BUCKET_NAME>
 - NOTEBOOK_S3_KEY=<subfolder/ipynb filename where ipynb file exists in s3>
+- ACCOUNT_ID=<aws_account_id>
+- CDK_DEFAULT_REGION<your region - ex. us-east-2>
 
 Once environment variables have been established run the following to install needed dependencies:  python3 -m pip install -r lambda/orchestrator/requirements.txt -t lambda/orchestrator 
+
+first run: npx cdk bootstrap aws://<ACCOUNT_ID>/<CDK_DEFAULT_REGION> - only need to run this the first time
 
 next run: npx cdk synth --profile default
 
 finally: npx cdk deploy --profile default
 
-Once deploy is finished lmada function will be available in aws - scheduled to run once a day at 3am UTC.
+Once deploy is finished lambda function will be available in aws - scheduled to run once a day at 3am UTC.
