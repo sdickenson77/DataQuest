@@ -31,7 +31,6 @@ export class DataPipelineStack extends Stack {
             [
               // install needed requirements
               'python -m pip install --no-cache-dir -r requirements.txt -t /asset-output',
-              'python -m ipykernel install --prefix /asset-output --name python3 --display-name "Python 3"',
               'cp -r . /asset-output'
             ].join(' && ')
           ]
